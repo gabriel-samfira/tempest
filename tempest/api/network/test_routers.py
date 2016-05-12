@@ -41,9 +41,9 @@ class RoutersTest(base.BaseRouterTest):
     @classmethod
     def resource_setup(cls):
         super(RoutersTest, cls).resource_setup()
-        cls.tenant_cidr = (CONF.network.tenant_network_cidr
+        cls.tenant_cidr = (CONF.network.project_network_cidr
                            if cls._ip_version == 4 else
-                           CONF.network.tenant_network_v6_cidr)
+                           CONF.network.project_network_v6_cidr)
 
     @test.attr(type='smoke')
     @test.idempotent_id('f64403e2-8483-4b34-8ccd-b09a87bcc68c')
@@ -53,7 +53,7 @@ class RoutersTest(base.BaseRouterTest):
         # as we need to check the response code
         name = data_utils.rand_name('router-')
         create_body = self.routers_client.create_router(
-            name, external_gateway_info={
+            name=name, external_gateway_info={
                 "network_id": CONF.network.public_network_id},
             admin_state_up=False)
         self.addCleanup(self._delete_router, create_body['router']['id'])
@@ -97,7 +97,7 @@ class RoutersTest(base.BaseRouterTest):
 
         name = data_utils.rand_name('router-')
         create_body = self.admin_routers_client.create_router(
-            name, tenant_id=project_id)
+            name=name, tenant_id=project_id)
         self.addCleanup(self.admin_routers_client.delete_router,
                         create_body['router']['id'])
         self.assertEqual(project_id, create_body['router']['tenant_id'])
@@ -124,7 +124,7 @@ class RoutersTest(base.BaseRouterTest):
                 'network_id': CONF.network.public_network_id,
                 'enable_snat': enable_snat}
             create_body = self.admin_routers_client.create_router(
-                name, external_gateway_info=external_gateway_info)
+                name=name, external_gateway_info=external_gateway_info)
             self.addCleanup(self.admin_routers_client.delete_router,
                             create_body['router']['id'])
             # Verify snat attributes after router creation
@@ -274,7 +274,7 @@ class RoutersTest(base.BaseRouterTest):
     @test.requires_ext(extension='extraroute', service='network')
     def test_update_delete_extra_route(self):
         # Create different cidr for each subnet to avoid cidr duplicate
-        # The cidr starts from tenant_cidr
+        # The cidr starts from project_cidr
         next_cidr = netaddr.IPNetwork(self.tenant_cidr)
         # Prepare to build several routes
         test_routes = []
@@ -364,6 +364,23 @@ class RoutersTest(base.BaseRouterTest):
         self._verify_router_interface(router['id'], subnet02['id'],
                                       interface02['port_id'])
 
+    @test.idempotent_id('96522edf-b4b5-45d9-8443-fa11c26e6eff')
+    def test_router_interface_port_update_with_fixed_ip(self):
+        network = self.create_network()
+        subnet = self.create_subnet(network)
+        router = self._create_router(data_utils.rand_name('router-'))
+        fixed_ip = [{'subnet_id': subnet['id']}]
+        interface = self._add_router_interface_with_subnet_id(router['id'],
+                                                              subnet['id'])
+        self.assertIn('port_id', interface)
+        self.assertIn('subnet_id', interface)
+        port = self.ports_client.show_port(interface['port_id'])
+        self.assertEqual(port['port']['id'], interface['port_id'])
+        router_port = self.ports_client.update_port(port['port']['id'],
+                                                    fixed_ips=fixed_ip)
+        self.assertEqual(subnet['id'],
+                         router_port['port']['fixed_ips'][0]['subnet_id'])
+
     def _verify_router_interface(self, router_id, subnet_id, port_id):
         show_port_body = self.ports_client.show_port(port_id)
         interface_port = show_port_body['port']
@@ -389,7 +406,7 @@ class DvrRoutersTest(base.BaseRouterTest):
     def test_create_distributed_router(self):
         name = data_utils.rand_name('router')
         create_body = self.admin_routers_client.create_router(
-            name, distributed=True)
+            name=name, distributed=True)
         self.addCleanup(self._delete_router,
                         create_body['router']['id'],
                         self.admin_routers_client)

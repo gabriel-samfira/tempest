@@ -14,8 +14,8 @@
 
 import testtools
 
-from tempest.common import api_version_utils
-from tempest import exceptions
+from tempest.lib.common import api_version_utils
+from tempest.lib import exceptions
 from tempest.tests import base
 
 

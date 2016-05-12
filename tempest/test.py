@@ -19,7 +19,6 @@ import os
 import re
 import sys
 import time
-import uuid
 
 import fixtures
 from oslo_log import log as logging
@@ -38,6 +37,7 @@ import tempest.common.generator.valid_generator as valid
 import tempest.common.validation_resources as vresources
 from tempest import config
 from tempest import exceptions
+from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 
 LOG = logging.getLogger(__name__)
@@ -611,13 +611,25 @@ class BaseTestCase(testtools.testcase.WithAttributes,
                 'dhcp': dhcp}
 
     @classmethod
-    def get_tenant_network(cls):
+    def get_tenant_network(cls, credentials_type='primary'):
         """Get the network to be used in testing
+
+        :param credentials_type: The type of credentials for which to get the
+                                 tenant network
 
         :return: network dict including 'id' and 'name'
         """
+        # Get a manager for the given credentials_type, but at least
+        # always fall back on getting the manager for primary credentials
+        if isinstance(credentials_type, six.string_types):
+            manager = cls.get_client_manager(credential_type=credentials_type)
+        elif isinstance(credentials_type, list):
+            manager = cls.get_client_manager(roles=credentials_type[1:])
+        else:
+            manager = cls.get_client_manager()
+
         # Make sure cred_provider exists and get a network client
-        networks_client = cls.get_client_manager().compute_networks_client
+        networks_client = manager.compute_networks_client
         cred_provider = cls._get_credentials_provider()
         # In case of nova network, isolated tenants are not able to list the
         # network configured in fixed_network_name, even if they can use it
@@ -702,10 +714,10 @@ class NegativeAutoTest(BaseTestCase):
                 resource = resource['name']
             LOG.debug("Add resource to test %s" % resource)
             scn_name = "inv_res_%s" % (resource)
-            scenario_list.append((scn_name, {"resource": (resource,
-                                                          str(uuid.uuid4())),
-                                             "expected_result": expected_result
-                                             }))
+            scenario_list.append((scn_name, {
+                "resource": (resource, data_utils.rand_uuid()),
+                "expected_result": expected_result
+            }))
         if schema is not None:
             for scenario in generator.generate_scenarios(schema):
                 scenario_list.append((scenario['_negtest_name'],
